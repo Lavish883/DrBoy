@@ -20,7 +20,11 @@ class Memory {
 		void set(uint8 value, uint16 addr, bool from_instructions = true);
 		uint8 read(uint16 addr) const;
 		uint16 last_addr_set;
+		std::vector<uint16> vram_writes;
 
+		void set_vram_write_access_allowed(bool access) {
+			this->vram_write_access_allowed = access;
+		}	
 		bool dma_requested;
 		int dma_cycles_left;
 	private:
@@ -31,6 +35,7 @@ class Memory {
 		std::vector<uint8> oam;
 		std::vector<uint8> external_ram;
 		std::vector<uint8> io_registers_and_hram;
+		bool vram_write_access_allowed = true;
 
 		void handle_dma_transfer(uint8 value);
 		void handle_serial_transfer(uint8 value);

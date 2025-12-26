@@ -4,9 +4,10 @@
 uint16_t interrupt_handler_addrs[5] = { 0x0040, 0x0048, 0x0050, 0x0058, 0x0060 };
 
 unsigned int CPU::execute() {
+	int t_cycles_before = this->t_cycles_count;
 	//log_to_file();
 	handle_clock();
-	handle_interrupts();
+	handle_interrupts(); // Can take t_cycles
 
 	if (IME_pending) {
 		IME = true;
@@ -16,13 +17,16 @@ unsigned int CPU::execute() {
 	int t_cycles_instr_took = 0;
 
 	if (!in_low_power_mode && !mem.dma_requested) {
-		int t_cycles_before = this->t_cycles_count;
 		uint8 opcode = mem.read(regPC++);
 		INSTRUCTIONS::execute_instruction(*this, opcode);
 		
 		t_cycles_instr_took = this->t_cycles_count - t_cycles_before;
 		tima_cycles_count += t_cycles_instr_took;
 		div_cycles_count += t_cycles_instr_took;
+	}
+
+	if (in_low_power_mode) {
+		t_cycles_instr_took += 1;	
 	}
 
 	if (mem.dma_requested && mem.dma_cycles_left > 0) {

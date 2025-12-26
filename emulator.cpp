@@ -10,22 +10,20 @@ void Emulator::init(std::string rom_name) {
 unsigned int Emulator::run(std::map<std::string, sf::RenderWindow*>& windows) {
 	const unsigned int t_cycles_took = this->cpu.execute();
 
-	// update tiles if something touched in vram
-	if (this->memory.last_addr_set >= 0x8000 && this->memory.last_addr_set <= 0x97FF) {
-		uint16 tile_base = this->memory.last_addr_set & 0xFFF0;
-		int tile_index = (tile_base - 0x8000) / 16;
-		this->ppu.update_dirty_tiles(tile_index);
+	for (uint16 addr : this->memory.vram_writes) {
+		// update tiles if something touched in vram
+		if (addr >= 0x8000 && addr <= 0x97FF) {
+			uint16 tile_base = addr & 0xFFF0;
+			int tile_index = (tile_base - 0x8000) / 16;
+			this->ppu.update_dirty_tiles(tile_index);
+		}
+		// Update tile map
+		if (addr >= 0x9800 && addr <= 0x9FFF) {
+			ppu.update_dirty_bg_map(addr - 0x9800);
+		}
 	}
-	if (memory.last_addr_set == 0x9806) {
-		std::cout << 'C' << std::endl;
-		uint8 value = memory.read(0x9806);
-		std::cout << value << std::endl;
-		
-	}
-	// Update tile map
-	if (memory.last_addr_set >= 0x9800 && this->memory.last_addr_set <= 0x9FFF) {
-		ppu.update_dirty_bg_map(memory.last_addr_set - 0x9800);
-	}
+	
+	this->memory.vram_writes.clear();
 	this->ppu.execute(t_cycles_took);
 
 	return t_cycles_took;

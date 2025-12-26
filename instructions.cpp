@@ -156,6 +156,7 @@ void INSTRUCTIONS::opcode_deconstructor(CPU& cpu, uint8 opcode, std::ostringstre
 	}
 	case 0xF3: {
 		cpu.set_IME(false);
+		cpu.t_cycles_count += 4;
 		name << "DI";
 		return;
 	}

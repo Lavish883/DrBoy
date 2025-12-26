@@ -6,6 +6,8 @@
 #include <iomanip>
 
 #define LY_ADDR 0xFF44
+#define LYC_ADDR 0xFF45
+#define STAT_ADDR 0xFF41
 #define IF_ADDR 0xFF0F
 #define LCDC_ADDR 0xFF40
 #define BGP_ADDR 0xFF47

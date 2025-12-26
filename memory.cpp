@@ -31,7 +31,7 @@ uint8 Memory::handle_input_read() const {
 	bit select_buttons_disabled = get_bit(joyp_value, 5);
 	bit d_pad_buttons_disabled = get_bit(joyp_value, 4);
 
-	if (select_buttons_disabled && d_pad_buttons_disabled) return 0x3F;
+	if (select_buttons_disabled && d_pad_buttons_disabled) return 0xFF;
 
 	if (!select_buttons_disabled) { // Active low checks if select button enabled
 		joyp_value += input_states[A_BUTTON];
@@ -47,6 +47,7 @@ uint8 Memory::handle_input_read() const {
 		joyp_value += input_states[DOWN] << 3;
 	}
 
+	std::cout << "value: " << joyp_value << std::endl;
 	return joyp_value;
 }
 
@@ -84,6 +85,8 @@ void Memory::set(uint8 value, uint16 addr, bool from_instructions) {
 		std::cout << "Invalid write ignoring at: " << addr << std::endl;
 	}
 	else if (addr >= 0x8000 && addr <= 0x9FFF) {
+		if (this->vram_write_access_allowed == false) return;
+		vram_writes.push_back(addr);
 		vram.at(addr - 0x8000) = value;
 	}
 	else if (addr >= 0xA000 && addr <= 0xBFFF) {

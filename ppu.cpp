@@ -1,10 +1,10 @@
 #include "ppu.h"
 
-sf::Color dmgPalette[4] = {
-    {255, 255, 255}, // White (0)
-    {169, 169, 169}, // ligt gray (1)
-    {84, 84, 84}, // dark gray (2)
-    {0, 0, 0} // black (3)
+uint32_t dmgPalette[4] = {
+    0xFFFFFFFF,
+    0xFFA9A9A9, // ligt gray (1)
+    0xFF545454, // dark gray (2)
+    0x000000FF // black (3)
 };
 
 void PPU::init() {
@@ -24,75 +24,139 @@ void PPU::oam_search() {
 
 void PPU::render_scanline() {
 	uint8 LY = mem.read(LY_ADDR);
-	std::vector<uint32_t> line_of_pixels(160); // 160 pixels in one scanline
-	std::vector<int> oam_in_line(10); // Max 10 sprites allowed per line
-
 	uint8 LCDC_value = mem.read(LCDC_ADDR);
-	bit obj_size = get_bit(LCDC_value, 2); // if 0 8x8 else 8x16
-	int obj_height = obj_size == 1 ? 16: 8;
-
-	for (int i = 0; i < 40; i++) { // Since 40 sprites can be held in the OAM
-		if (oam_in_line.size() == 10) break;
-		uint8 y_pos = mem.read(OAM_DMA_ADDR + 4 * i); // 4 * since one sprite takes 4 bytes
-		if (LY + 16 >= y_pos && LY + 16 <= y_pos + obj_height) {
-			oam_in_line.push_back(i);
-		}
-	}
-
-	uint8 global_y = LY + mem.read(SCY_ADDR);
-	bit LCDC_3_value = get_bit(LCDC_value, 3);
-
-	uint16 bg_start_addr = LCDC_3_value == 1 ? 0x9C00 : 0x9800;
+	uint8 SCX_value = mem.read(SCX_ADDR);
+	uint8 SCY_value = mem.read(SCY_ADDR);
+	uint8 WX_value = mem.read(WX_ADDR);
+	uint8 WY_value = mem.read(WY_ADDR);
 	
-	// We get what tile first corresponds to that pixel position get that tile and tehn look at its pixel color at that pos
-	for (int i = 0; i < 160; i++) { // 160 pixels for that scanline bg
-		uint8 global_x = i + mem.read(SCX_ADDR);	
-		uint8 tile_row = global_y / 8;		
-		uint8 tile_col = global_x / 8;	
-		
-		uint16 map_offset = tile_row * 32 + tile_col;
-		uint16 tile_index_addr = bg_start_addr + map_offset;
-
-		uint8 tile_index = mem.read(tile_index_addr);
-		uint8 tile_id = get_tile_id(get_bit(LCDC_value, 4), tile_index); // Corrects the tile id to match the index from the atlas_framebuffer
-		//std::cout << tile_id;
-		uint8 x_pos = i % 8;
-		uint8 y_pos = global_y % 8;
-		
-		uint32_t pixel_color = atlas_framebuffer.at(tile_id * 16 + (x_pos + y_pos * ATLAS_WIDTH));
-		screen_framebuffer.at(LY * SCREEN_WIDTH + i) = pixel_color;
-		//mem.read(VRAM_START + tile_id);
-	}
-	
-	line_rendered = false;
-}
-
-void PPU::render_scanline_v2() {
-	uint8 LY = mem.read(LY_ADDR);
-	uint8 LCDC_value = mem.read(LCDC_ADDR);
+	bit LCDC_0_value = get_bit(LCDC_value, 0); // BG and Window enable/priority
 	bit LCDC_3_value = get_bit(LCDC_value, 3);
 	bit LCDC_4_value = get_bit(LCDC_value, 4);
+	bit LCDC_5_value = get_bit(LCDC_value, 5);
+	bit LCDC_6_value = get_bit(LCDC_value, 6);
 
-	bit tile_map_chosen = LCDC_3_value == 1 ? 1 : 0;
 
+	bit bg_tile_map_chosen = LCDC_3_value == 1 ? 1 : 0;
+	bit window_tile_map_chosen = LCDC_6_value == 1 ? 1 : 0;
+	
+	bool window_pixel_used = false;
+	// Renders the background and window
 	for (int x = 0; x < 160; x++) { // 160 pixels per scanline
-		uint8 tile_index = tile_map[tile_map_chosen][LY >> 3][x >> 3];
-		int corrected_tile_index = LCDC_4_value == 1 ? tile_index : 256 + static_cast<int8_t>(tile_index);
-		uint8 pixel_2bit = tile_pixels[corrected_tile_index][LY % 8][x % 8];
+		if (LCDC_0_value == 0) {
+			main_screen_framebuffer[LY][x] = dmgPalette[0]; // White if LCDC_0 is 0
+			continue;
+		}
+		//int adjusted_wx = static_cast<int>(WX_value) - 7;
+		bool render_window = LCDC_5_value == 1 && WY_value <= LY &&	x >= WX_value - 7; // means render window pixel
+		if (render_window) window_pixel_used = true;
 
-		main_screen_framebuffer[LY][x] = dmgPalette[pixel_2bit].toInteger();
+		uint8 bg_x = render_window ? x - WX_value + 7  : x + SCX_value;
+		uint8 bg_y = render_window ? window_line_counter : LY + SCY_value;
+
+		uint8 tile_index = tile_map.at(render_window ? window_tile_map_chosen : bg_tile_map_chosen).at(bg_y >> 3).at(bg_x >> 3);
+		int corrected_tile_index = LCDC_4_value == 1 ? tile_index : 256 + static_cast<int8_t>(tile_index);
+		uint8 color_index = tile_pixels[corrected_tile_index][bg_y & 7][bg_x & 7]; // & 7 is mod 8
+
+		main_screen_framebuffer[LY][x] = dmgPalette[color_index];
 	}
 
-	line_rendered = false;
+	if (window_pixel_used) window_line_counter += 1;
+
+	line_rendered = true;
 }
 
+void PPU::get_tiles_data(uint32_t* frame_buffer, int tiles_per_row, int tile_size) {
+	int entire_tile_row_width = tiles_per_row * tile_size; 
+
+	for (int i = 0; i < 384; i++){
+		for (int r = 0; r < tile_size; r++){
+			for (int c = 0; c < tile_size; c++) {
+				frame_buffer[
+					(r * entire_tile_row_width) + 
+					((i / tiles_per_row) * tile_size * entire_tile_row_width) + 
+					(c + (i % tiles_per_row) * tile_size)
+				] = dmgPalette[tile_pixels[i][r][c]];
+			}
+		}
+	}
+}
+
+void PPU::get_tile_map_data(uint32_t* frame_buffer, uint16 start_addr) {
+	int map_to_use = start_addr == 0x9800 ? 0 : 1;
+	int tile_size = 8;
+	int entire_tile_row_width = tile_size * 32; // 8px, 32 tiles
+
+	for (int tile_y = 0; tile_y < 32; tile_y++) { // Since each tile map contains 1024 tiles
+		for (int tile_x = 0; tile_x < 32; tile_x++) {
+			int tile_index = tile_map.at(map_to_use).at(tile_y).at(tile_x);
+			for (int r = 0; r < 8; r++) {
+				for (int c = 0; c < 8; c++) {
+					frame_buffer [
+						(r * entire_tile_row_width) + 
+						(tile_y * tile_size * entire_tile_row_width) + 
+						(c + (tile_x) * tile_size)
+					] = dmgPalette[tile_pixels[tile_index][r][c]];
+				}
+			}
+		}
+	}
+}
+
+void PPU::handle_mode() {
+	if (t_cycles_count <= 80) { mode = 2; return; }
+	if (t_cycles_count > 80 && t_cycles_count <= 252) { mode = 3; return; }
+	mode = 0; return;
+}
+
+void PPU::handle_stat_interuppts(uint8 LY, uint8 LYC) {
+	uint8 STAT = mem.read(STAT_ADDR);
+	uint8 IF_value = mem.read(IF_ADDR);
+
+	if (
+		(get_bit(STAT, 6) == 1 && LYC == LY && prev_LYC_coincidence != (LYC == LY)) ||
+		(get_bit(STAT, 5) == 1 && mode == 2 && prev_mode != 2) ||
+		(get_bit(STAT, 4) == 1 && mode == 1 && prev_mode != 1) ||
+		(get_bit(STAT, 3) == 1 && mode == 0 && prev_mode != 0) // If any of those conditions are true set an interrupt
+		) {
+		IF_value |= 0b10;
+		mem.set(IF_value, IF_ADDR, false);
+	}
+
+	// Update STAT
+	set_bit(STAT, 2, LYC == LY);
+	
+	set_bit(STAT, 1, 0);
+	set_bit(STAT, 0, 0); // Clear mode bits
+	
+	STAT |= mode;
+	mem.set(STAT, STAT_ADDR, false);
+
+	prev_LYC_coincidence = (LYC == LY);
+}
 
 void PPU::update_LY_register() {
+	handle_mode();
 	uint8 LY = mem.read(LY_ADDR);
-	if (LY < 144 && t_cycles_count >= 172 && !line_rendered) {
-		update_tile_pixels();
-		update_tile_maps();
-		render_scanline_v2();
+	uint8 LYC = mem.read(LYC_ADDR);
+
+	if (LY >= 144) {
+		mode = 1; // V_BLANK
+		window_line_counter = 0;
+	}
+
+	switch (mode)
+	{
+		case 3: {
+			if (line_rendered) break;
+			update_tile_pixels();
+			update_tile_maps();
+			render_scanline();
+			break;
+		}
+		default: {
+			break;
+		}
 	}
 
 	if (t_cycles_count >= 456) {
@@ -109,8 +173,10 @@ void PPU::update_LY_register() {
 		line_rendered = false;
 		t_cycles_count -= 456;
 	}
+	handle_stat_interuppts(LY, LYC);
+	
+	prev_mode = mode;
 }
-
 
 void PPU::update_dirty_tiles(int tile_index) {
 	dirty_tiles.set(tile_index);
@@ -143,87 +209,7 @@ void PPU::update_tile_maps() {
 	for (int tile = 0; tile < 2048; tile++){
 		if (!dirty_bg_map.test(tile)) continue;
 		int map_num = tile >= 1024 ? 1: 0;
-		tile_map[map_num][tile / 32][tile % 32] = mem.read(TILE_MAP_START + tile);
+		tile_map.at(map_num).at((tile % 1024) / 32).at((tile % 1024) % 32) = mem.read(TILE_MAP_START + tile);
 	}
 	dirty_bg_map.reset();
-}
-
-
-
-
-
-void PPU::update_tile_atlas() {
-	if (dirty_tiles.none()) return;
-	for (int tile_index = 0; tile_index < 384; tile_index++) {
-		if (dirty_tiles.test(tile_index)) {
-			int tile_x_index = tile_index % TILE_COLS; // horizontal tile index
-			int tile_y_index = tile_index / TILE_COLS; // vertical tile index
-			uint16 tile_base = VRAM_START + tile_index * 16;
-
-			for (int row = 0; row < TILE_SIZE; row++) {
-				uint8 low_byte = mem.read(tile_base + row * 2);
-				uint8 high_byte = mem.read(tile_base + row * 2 + 1);
-
-				for (int col = 0; col < TILE_SIZE; col++) {
-					int px = tile_x_index * 8 + col;
-					int py = tile_y_index * 8 + row;
-
-					uint8 color_index = get_bit(high_byte, 7 - col) * 2 + get_bit(low_byte, 7 - col);
-					atlas_framebuffer[(py * ATLAS_WIDTH + px) + 0] = (dmgPalette[color_index].a << 24) | (dmgPalette[color_index].r << 16) | (dmgPalette[color_index].g << 8) | (dmgPalette[color_index].b);
-					// Reddish tint
-					//atlas_framebuffer[(py * ATLAS_WIDTH + px) + 0] = (dmgPalette[color_index].r << 24) | (dmgPalette[color_index].g << 16) | (dmgPalette[color_index].b << 8) | 255;
-				}
-			}
-		}
-	}
-	dirty_tiles.reset();
-	update_bg_atlas();
-}
-
-int PPU::get_tile_id(bit LCDC_4_value, uint8 tile_index) {
-	if (LCDC_4_value) {
-		return tile_index; // unsigned index into 0x8000
-	}
-	else {
-		int8_t signed_index = static_cast<int8_t>(tile_index);
-		return 256 + signed_index; // shift signed index to valid range
-	}
-}
-
-void PPU::update_bg_atlas() {
-	uint8 LCDC_value = mem.read(LCDC_ADDR);
-
-	bit LCDC_4_value = get_bit(LCDC_value, 4);
-	bit LCDC_3_value = get_bit(LCDC_value, 3);
-
-	uint16 bg_start_addr = LCDC_3_value == 1 ? 0x9C00 : 0x9800;
-	uint16 bg_end_addr = LCDC_3_value == 1 ? 0x9FFF : 0x9BFF;
-
-	for (uint16 bg_addr = bg_start_addr; bg_addr <= bg_end_addr; bg_addr++) {
-		uint8 tile_index = mem.read(bg_addr);
-		int tile_id = get_tile_id(LCDC_4_value, tile_index);
-
-		int tile_x = tile_id % TILE_COLS;
-		int tile_y = tile_id / TILE_COLS;
-
-		int map_x = (bg_addr - bg_start_addr) % 32;
-		int map_y = (bg_addr - bg_start_addr) / 32;
-
-		for (int row = 0; row < TILE_SIZE; row++) {
-			for (int col = 0; col < TILE_SIZE; col++) {
-				// Get pixel from atlas
-				int atlas_px = tile_x * TILE_SIZE + col;
-				int atlas_py = tile_y * TILE_SIZE + row;
-				uint32_t pixel_color = atlas_framebuffer.at(atlas_py * ATLAS_WIDTH + atlas_px);
-
-				// Write to bg_pixels
-				int bg_px = map_x * TILE_SIZE + col;
-				int bg_py = map_y * TILE_SIZE + row;
-				if (bg_px < 256 && bg_py < 256) {
-					bg_pixels.at(bg_py * 256 + bg_px) = pixel_color;
-				}
-			}
-		}
-	}
-
 }

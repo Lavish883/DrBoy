@@ -29,31 +29,38 @@ int main(int argc, char *argv[])
 	std::map<std::string, sf::RenderWindow *> windows;
 	sf::RenderWindow window(sf::VideoMode(SCREEN_WIDTH * SCALE_FACTOR, SCREEN_HEIGHT * SCALE_FACTOR), "Game Boy Emulator");
 	sf::RenderWindow tiles_window(sf::VideoMode(ATLAS_WIDTH * SCALE_FACTOR, ATLAS_HEIGHT * SCALE_FACTOR), "Tiles");
+	//sf::RenderWindow background_window(sf::VideoMode(256 * SCALE_FACTOR/2, 256 * SCALE_FACTOR/2), "BG");
+
 
 	sf::Texture bg_screen_texture;
 	sf::Texture tiles_texture;
 	sf::Texture main_screen_texture;
 
 	main_screen_texture.create(SCREEN_WIDTH, SCREEN_HEIGHT);
-	bg_screen_texture.create(SCREEN_WIDTH_WITH_HIDDEN, SCREEN_HEIGHT_WITH_HIDDEN);
+	bg_screen_texture.create(256, 256);
 	tiles_texture.create(ATLAS_WIDTH, ATLAS_HEIGHT);
 
 	sf::Sprite bg_screen(bg_screen_texture);
 	sf::Sprite screen(main_screen_texture);
 	sf::Sprite tiles_sprite(tiles_texture);
+
 	tiles_sprite.setScale(4.f, 4.f);
-	bg_screen.setScale(4.f, 4.f);
+	bg_screen.setScale(2.f, 2.f);
 	screen.setScale(4.f, 4.f);
 
 	std::string str = "main";
 	windows.insert({str, &window});
 
 	Emulator emu;
-	emu.init("roms/drMario.gb");
+	emu.init("tests/dmg-acid2.gb");
 
-	// test_all_cpu_blargg(1, windows);
+	//test_all_cpu_blargg(1, windows);
 
-	while (window.isOpen() || tiles_window.isOpen())
+	uint32_t* tiles_framebuffer = (uint32_t*)malloc(sizeof(uint32_t) * 384 * 64); // 384 tiles each 64 pixels
+	uint32_t* tile_map_9800 = (uint32_t*)malloc(sizeof(uint32_t) * 256 * 256); // 256px by 256 px for tilemap starting at 0x9800
+
+	uint64_t frame_num = 0;
+	while (window.isOpen() || tiles_window.isOpen()) //  || background_window.isOpen()
 	{
 		sf::Event event;
 		sf::Event event2;
@@ -63,6 +70,7 @@ int main(int argc, char *argv[])
 			{
 				window.close();
 				tiles_window.close();
+				//background_window.close();
 				break;
 			}
 		}
@@ -81,23 +89,34 @@ int main(int argc, char *argv[])
 		while (cycles_this_frame < CYCLES_PER_FRAME)
 		{
 			unsigned int cycles_took = emu.run(windows);
+			if (cycles_took == 0) {
+				throw std::runtime_error("Fuk");
+			}
 			cycles_this_frame += cycles_took;
 		}
 
+		emu.ppu.get_tiles_data(tiles_framebuffer, TILE_COLS, TILE_SIZE);
+		emu.ppu.get_tile_map_data(tile_map_9800, 0X9C00);
 		//emu.ppu.update_tile_atlas();
 		//emu.ppu.update_bg_atlas();
 
-		//tiles_texture.update((uint8_t *)emu.ppu.atlas_framebuffer.data());
-		//bg_screen_texture.update((uint8_t *)emu.ppu.bg_pixels.data());
+		tiles_texture.update((uint8_t *)tiles_framebuffer);
 		main_screen_texture.update((uint8_t *)emu.ppu.main_screen_framebuffer);
+		bg_screen_texture.update((uint8_t *)tile_map_9800);
 
 		window.clear();
 		tiles_window.clear();
+		//background_window.clear();
 		tiles_window.draw(tiles_sprite);
+		//background_window.draw(bg_screen);
 		window.draw(screen);
 		window.display();
 		tiles_window.display();
+		//background_window.display();
+		frame_num++;
 	}
+
+	free(tiles_framebuffer);
 	return 0;
 }
 
