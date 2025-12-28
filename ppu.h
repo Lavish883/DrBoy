@@ -16,7 +16,7 @@ public:
 	uint8_t tile_pixels[384][8][8]; // 2 bit values, 384 tiles that are 8 px by 8px
 	std::array<std::array<std::array<uint16_t, 32>, 32>, 2> tile_map; // How the tiles are mapped, 32 since 256px total / 8px per tile, [2] since two tile maps
 	uint32_t main_screen_framebuffer [144][160]; // Since gameboy renders row by row
-
+	std::array<std::array<uint8_t, 4>, 40> oam_map; // 40 sprites with 4 bytes each
 
 
 	PPU(Memory& memory) : mem(memory) {
@@ -25,11 +25,16 @@ public:
 	void execute(unsigned int t_cycles_took);
 	void update_dirty_tiles(int tile_index);
 	void update_dirty_bg_map(int tile_place);
+	void update_dirty_oam(int place);
+
+
 	void get_tiles_data(uint32_t* frame_buffer, int tiles_per_row, int tile_size);
 	void get_tile_map_data(uint32_t* frame_buffer, uint16 start_addr);
 private:
-	void update_tile_pixels();
-	void update_tile_maps();		
+	void update_tile_pixels();  // TO MAKE MORE EFFICENT, this allows not fetching from mem a lot
+	void update_tile_maps();	 
+	void update_oam_map();
+	
 	void render_scanline();
 	void handle_mode();
 	void handle_stat_interuppts(uint8 LY, uint8 LYC);
@@ -49,6 +54,7 @@ private:
 	
 	std::bitset<384> dirty_tiles;
 	std::bitset<2048> dirty_bg_map; // Can place 1024 tiles, but two tilemaps
+	std::bitset<160> dirty_oam; // 160 bytes of OAM mem
 
 	Memory& mem;
 	bool line_rendered = false;

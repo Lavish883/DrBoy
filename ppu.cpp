@@ -1,10 +1,17 @@
 #include "ppu.h"
 
 uint32_t dmgPalette[4] = {
-    0xFFFFFFFF,
-    0xFFA9A9A9, // ligt gray (1)
+    0xFFFFFFFF, // white (0)
+    0xFFA9A9A9, // light gray (1)
     0xFF545454, // dark gray (2)
-    0x000000FF // black (3)
+    0xFF000000 // black (3)
+};
+
+uint32_t dmgGreenPalette[4] = {
+    0xffe0f8d0, // lightest green (white)
+    0xff88c070, // light green
+    0xff346856, // dark green
+    0xff081820  // darkest green (black)
 };
 
 void PPU::init() {
@@ -23,6 +30,15 @@ void PPU::oam_search() {
 }
 
 void PPU::render_scanline() {
+	uint8 bg_palette_mapping = mem.read(BG_PALETTE_ADDR);
+	uint32_t bg_palette[4] = {
+		dmgPalette[(get_bit(bg_palette_mapping, 1) << 1) + get_bit(bg_palette_mapping, 0)], // 0
+		dmgPalette[(get_bit(bg_palette_mapping, 3) << 1) + get_bit(bg_palette_mapping, 2)], // 1
+		dmgPalette[(get_bit(bg_palette_mapping, 5) << 1) + get_bit(bg_palette_mapping, 4)], // 2
+		dmgPalette[(get_bit(bg_palette_mapping, 7) << 1) + get_bit(bg_palette_mapping, 6)]  // 3
+	};
+
+	
 	uint8 LY = mem.read(LY_ADDR);
 	uint8 LCDC_value = mem.read(LCDC_ADDR);
 	uint8 SCX_value = mem.read(SCX_ADDR);
@@ -47,7 +63,6 @@ void PPU::render_scanline() {
 			main_screen_framebuffer[LY][x] = dmgPalette[0]; // White if LCDC_0 is 0
 			continue;
 		}
-		//int adjusted_wx = static_cast<int>(WX_value) - 7;
 		bool render_window = LCDC_5_value == 1 && WY_value <= LY &&	x >= WX_value - 7; // means render window pixel
 		if (render_window) window_pixel_used = true;
 
@@ -58,11 +73,66 @@ void PPU::render_scanline() {
 		int corrected_tile_index = LCDC_4_value == 1 ? tile_index : 256 + static_cast<int8_t>(tile_index);
 		uint8 color_index = tile_pixels[corrected_tile_index][bg_y & 7][bg_x & 7]; // & 7 is mod 8
 
-		main_screen_framebuffer[LY][x] = dmgPalette[color_index];
+		main_screen_framebuffer[LY][x] = bg_palette[color_index];
+	}
+
+	//Render the objects/sprites
+	uint8 obj0_palette_mapping = mem.read(OBJ0_PALETTE_ADDR);
+	uint8 obj1_palette_mapping = mem.read(OBJ1_PALETTE_ADDR);
+
+	uint32_t obj0_palette[4] = {
+		0x0, 	// 0 (always transparent) handled in if code
+		dmgPalette[(get_bit(obj0_palette_mapping, 3) << 1) | get_bit(obj0_palette_mapping, 2)], // 1
+		dmgPalette[(get_bit(obj0_palette_mapping, 5) << 1) | get_bit(obj0_palette_mapping, 4)],	// 2
+		dmgPalette[(get_bit(obj0_palette_mapping, 7) << 1) | get_bit(obj0_palette_mapping, 6)]	// 3
+	};
+
+	uint32_t obj1_palette[4] = {
+		0x0, 	// 0 (always transparent) handled in if code
+		dmgPalette[(get_bit(obj1_palette_mapping, 3) << 1) | get_bit(obj1_palette_mapping, 2)], // 1
+		dmgPalette[(get_bit(obj1_palette_mapping, 5) << 1) | get_bit(obj1_palette_mapping, 4)],	// 2
+		dmgPalette[(get_bit(obj1_palette_mapping, 7) << 1) | get_bit(obj1_palette_mapping, 6)]	// 3
+	};
+
+
+	bit LCDC_2_value = get_bit(LCDC_value, 2); // obj size
+	int objs[10];
+	int obj_count = 0;
+
+	int obj_height = LCDC_2_value == 0 ? 8 : 16;
+
+	for (int sprite_num = 0; sprite_num < 40; sprite_num++) { // Since max 40 sprites in oam, 0 y pos, 1 x pos, 2 tile index, 3 attribute/flags
+		if (LY + 16 >= oam_map[sprite_num][OAM_SPRITE_Y] && LY + 16 <= oam_map[sprite_num][OAM_SPRITE_Y] + obj_height) {
+			objs[obj_count] = sprite_num;
+			obj_count++;
+			if (obj_count == 10) break;
+		}
+	}
+
+	for (int sprite_num = 0; sprite_num < obj_count; sprite_num++) {
+		auto sprite = oam_map[objs[sprite_num]];
+		uint8 sprite_x = sprite[OAM_SPRITE_X]; 
+
+		if (LCDC_2_value == 0){ // HANDLE 8x8 
+			if (sprite_x == 0 || sprite_x >= 168) continue; // sprite is out of screen
+
+			for (int x = 0; x < 8; x++) { // Potentially 8 pixels for witdh to display
+				// Check if the pixel are on screen
+				if (x + sprite_x > 8 && x + sprite_x < 168) {
+					uint8 color_index = tile_pixels[sprite[OAM_SPRITE_TILE]][(LY + 16) & 7][x];
+					uint32_t* palette = get_bit(sprite[OAM_SPRITE_FLAGS], 4) == 0 ? obj0_palette : obj1_palette;
+					
+					if (color_index != 0) { // Since 0 would be transparent 
+						main_screen_framebuffer[LY][x + sprite_x - 8] =  palette[color_index];
+					}
+				}
+			}
+		} else { // HANDE 8x16, 
+
+		}
 	}
 
 	if (window_pixel_used) window_line_counter += 1;
-
 	line_rendered = true;
 }
 
@@ -148,13 +218,16 @@ void PPU::update_LY_register() {
 	switch (mode)
 	{
 		case 3: {
+			mem.set_vram_write_access_allowed(false);
 			if (line_rendered) break;
 			update_tile_pixels();
 			update_tile_maps();
+			update_oam_map();
 			render_scanline();
 			break;
 		}
 		default: {
+			mem.set_vram_write_access_allowed(true);
 			break;
 		}
 	}
@@ -202,6 +275,19 @@ void PPU::update_tile_pixels() {
 
 void PPU::update_dirty_bg_map(int tile_place) {
 	dirty_bg_map.set(tile_place);
+}
+
+void PPU::update_dirty_oam(int place) {
+	dirty_oam.set(place);
+}
+
+void PPU::update_oam_map() {
+	if (dirty_oam.none()) return;
+	for (int byte = 0; byte < 160; byte++){
+		if (!dirty_oam.test(byte)) continue;
+		oam_map.at(byte / 4).at(byte % 4) = mem.read(OAM_START_ADDR + byte);
+	}
+	dirty_oam.reset();
 }
 
 void PPU::update_tile_maps() {

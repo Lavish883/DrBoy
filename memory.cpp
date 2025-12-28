@@ -21,8 +21,11 @@ void Memory::handle_dma_transfer(uint8 value) { // 160 bytes copy
 	if (value >= 0xA0 && value <= 0xBF) { // Copy from external rram
 		std::copy(external_ram.begin(), external_ram.begin() + 0xA0, oam.begin());
 	}
-	if (value >= 0x80 && value <= 0x9F) { // Copy from wram
+	if (value >= 0xC0 && value <= 0xDF) { // Copy from wram
 		std::copy(wram.begin(), wram.begin() + 0xA0, oam.begin());
+	}
+	for (int i = 0; i < 160; i++) {
+		this->vram_writes.push_back(OAM_START_ADDR + i);
 	}
 }
 
@@ -46,8 +49,6 @@ uint8 Memory::handle_input_read() const {
 		joyp_value += input_states[UP] << 2;
 		joyp_value += input_states[DOWN] << 3;
 	}
-
-	std::cout << "value: " << joyp_value << std::endl;
 	return joyp_value;
 }
 
@@ -81,11 +82,11 @@ uint8 Memory::read(uint16 addr) const {
 
 void Memory::set(uint8 value, uint16 addr, bool from_instructions) {
 	last_addr_set = addr;
+
 	if (addr >= 0x0 && addr <= 0x7FFF) {
 		std::cout << "Invalid write ignoring at: " << addr << std::endl;
 	}
 	else if (addr >= 0x8000 && addr <= 0x9FFF) {
-		if (this->vram_write_access_allowed == false) return;
 		vram_writes.push_back(addr);
 		vram.at(addr - 0x8000) = value;
 	}
@@ -96,7 +97,9 @@ void Memory::set(uint8 value, uint16 addr, bool from_instructions) {
 		wram.at(addr - 0xC000) = value;
 	}
 	else if (addr >= 0xFF00 && addr <= 0xFFFF) {
-		if (addr == OAM_DMA_ADDR) return handle_dma_transfer(value);
+		if (addr == OAM_DMA_ADDR) {
+			handle_dma_transfer(value);
+		}
 		if (addr == JOYP_ADDR && from_instructions){
 			value &= 0x30;
 		} 
@@ -105,6 +108,7 @@ void Memory::set(uint8 value, uint16 addr, bool from_instructions) {
 		io_registers_and_hram.at(addr - 0xFF00) = value;
 	}
 	else if (addr >= 0xFE00 && addr <= 0xFE9F) {
+		vram_writes.push_back(addr); // IK NOT PART OF VRAM BUT HOW DATA IS UPDATED IN PPU
 		oam.at(addr - 0xFE00) = value;
 	}
 	else if (addr >= 0xFEA0 && addr <= 0xFEFF) {

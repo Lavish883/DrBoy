@@ -21,6 +21,10 @@ unsigned int Emulator::run(std::map<std::string, sf::RenderWindow*>& windows) {
 		if (addr >= 0x9800 && addr <= 0x9FFF) {
 			ppu.update_dirty_bg_map(addr - 0x9800);
 		}
+		
+		if (addr >= OAM_START_ADDR && addr <= 0xFE9F) {
+			ppu.update_dirty_oam(addr - OAM_START_ADDR);
+		}
 	}
 	
 	this->memory.vram_writes.clear();

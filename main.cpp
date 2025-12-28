@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
 	windows.insert({str, &window});
 
 	Emulator emu;
-	emu.init("tests/dmg-acid2.gb");
+	emu.init("roms/tetris.gb");
 
 	//test_all_cpu_blargg(1, windows);
 
@@ -146,6 +146,6 @@ void handle_input(Emulator& emu, sf::Event event) {
     emu.set_input(B_BUTTON,  !sf::Keyboard::isKeyPressed(sf::Keyboard::X));
     emu.set_input(UP, !sf::Keyboard::isKeyPressed(sf::Keyboard::Up));
     emu.set_input(DOWN, !sf::Keyboard::isKeyPressed(sf::Keyboard::Down));
-    emu.set_input(LEFT, !sf::Keyboard::isKeyPressed(sf::Keyboard::Right));
-    emu.set_input(RIGHT, !sf::Keyboard::isKeyPressed(sf::Keyboard::Left));
+    emu.set_input(LEFT, !sf::Keyboard::isKeyPressed(sf::Keyboard::Left));
+    emu.set_input(RIGHT, !sf::Keyboard::isKeyPressed(sf::Keyboard::Right));
 }
