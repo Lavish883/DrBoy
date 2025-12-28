@@ -5,7 +5,9 @@
 #include <bitset>
 #include <vector>
 #include <bit>
+#include <set>
 #include <array>
+#include <algorithm>
 #include "util.h"
 #include <string.h>
 #include <SFML/Graphics.hpp>

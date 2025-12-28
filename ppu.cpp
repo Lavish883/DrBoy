@@ -37,7 +37,6 @@ void PPU::render_scanline() {
 		dmgPalette[(get_bit(bg_palette_mapping, 5) << 1) + get_bit(bg_palette_mapping, 4)], // 2
 		dmgPalette[(get_bit(bg_palette_mapping, 7) << 1) + get_bit(bg_palette_mapping, 6)]  // 3
 	};
-
 	
 	uint8 LY = mem.read(LY_ADDR);
 	uint8 LCDC_value = mem.read(LCDC_ADDR);
@@ -72,7 +71,7 @@ void PPU::render_scanline() {
 		uint8 tile_index = tile_map.at(render_window ? window_tile_map_chosen : bg_tile_map_chosen).at(bg_y >> 3).at(bg_x >> 3);
 		int corrected_tile_index = LCDC_4_value == 1 ? tile_index : 256 + static_cast<int8_t>(tile_index);
 		uint8 color_index = tile_pixels[corrected_tile_index][bg_y & 7][bg_x & 7]; // & 7 is mod 8
-
+		
 		main_screen_framebuffer[LY][x] = bg_palette[color_index];
 	}
 
@@ -81,57 +80,88 @@ void PPU::render_scanline() {
 	uint8 obj1_palette_mapping = mem.read(OBJ1_PALETTE_ADDR);
 
 	uint32_t obj0_palette[4] = {
-		0x0, 	// 0 (always transparent) handled in if code
+		0xFF00FF00, 	// 0 (always transparent) handled in if code
 		dmgPalette[(get_bit(obj0_palette_mapping, 3) << 1) | get_bit(obj0_palette_mapping, 2)], // 1
 		dmgPalette[(get_bit(obj0_palette_mapping, 5) << 1) | get_bit(obj0_palette_mapping, 4)],	// 2
 		dmgPalette[(get_bit(obj0_palette_mapping, 7) << 1) | get_bit(obj0_palette_mapping, 6)]	// 3
 	};
-
 	uint32_t obj1_palette[4] = {
-		0x0, 	// 0 (always transparent) handled in if code
+		0xFF00FF00, 	// 0 (always transparent) handled in if code
 		dmgPalette[(get_bit(obj1_palette_mapping, 3) << 1) | get_bit(obj1_palette_mapping, 2)], // 1
 		dmgPalette[(get_bit(obj1_palette_mapping, 5) << 1) | get_bit(obj1_palette_mapping, 4)],	// 2
 		dmgPalette[(get_bit(obj1_palette_mapping, 7) << 1) | get_bit(obj1_palette_mapping, 6)]	// 3
 	};
 
 
+	bit LCDC_1_value = get_bit(LCDC_value, 1); // obj enable
 	bit LCDC_2_value = get_bit(LCDC_value, 2); // obj size
-	int objs[10];
-	int obj_count = 0;
+	
+	if (LCDC_1_value == 1) {
 
-	int obj_height = LCDC_2_value == 0 ? 8 : 16;
+		std::vector<uint8> objs;
+		int obj_count = 0;
+		int obj_height = LCDC_2_value == 0 ? 8 : 16;
 
-	for (int sprite_num = 0; sprite_num < 40; sprite_num++) { // Since max 40 sprites in oam, 0 y pos, 1 x pos, 2 tile index, 3 attribute/flags
-		if (LY + 16 >= oam_map[sprite_num][OAM_SPRITE_Y] && LY + 16 <= oam_map[sprite_num][OAM_SPRITE_Y] + obj_height) {
-			objs[obj_count] = sprite_num;
-			obj_count++;
-			if (obj_count == 10) break;
+		
+		for (int sprite_num = 0; sprite_num < 40; sprite_num++) { // Since max 40 sprites in oam, 0 y pos, 1 x pos, 2 tile index, 3 attribute/flags
+			if (LY + 16 >= oam_map[sprite_num][OAM_SPRITE_Y] && LY + 16 < oam_map[sprite_num][OAM_SPRITE_Y] + obj_height) {
+				objs.push_back(sprite_num);
+				obj_count++;
+				if (obj_count == 10) break;
+			}
 		}
-	}
 
-	for (int sprite_num = 0; sprite_num < obj_count; sprite_num++) {
-		auto sprite = oam_map[objs[sprite_num]];
-		uint8 sprite_x = sprite[OAM_SPRITE_X]; 
+		// Sorts based on the drawing priority
+		std::sort(objs.begin(), objs.end(), [this](uint8 sprite_num_a, uint8 sprite_num_b) {
+			uint8 sprite_a_x = oam_map[sprite_num_a][OAM_SPRITE_X];
+			uint8 sprite_b_x = oam_map[sprite_num_b][OAM_SPRITE_X];
+			if (sprite_a_x == sprite_b_x) {
+				return sprite_num_a < sprite_num_b; // This means a is earlier in the OAM
+			}
 
-		if (LCDC_2_value == 0){ // HANDLE 8x8 
+			return sprite_a_x < sprite_b_x;
+		});
+
+		// This way because objs go from high_priority to low_priority, and since pixels override each other
+		for (int sprite_num = objs.size() - 1; sprite_num >= 0; sprite_num--) {
+			auto sprite = oam_map[objs.at(sprite_num)];
+
+			uint8 sprite_x = sprite[OAM_SPRITE_X]; 
+			uint8 sprite_y = sprite[OAM_SPRITE_Y]; 
+			uint8 sprite_tile_index = sprite[OAM_SPRITE_TILE];
+			uint8 sprite_flags = sprite[OAM_SPRITE_FLAGS];
+
+			bit bg_priority = get_bit(sprite_flags, 7);
+			bit y_flip = get_bit(sprite_flags, 6);
+			bit x_flip = get_bit(sprite_flags, 5);
+			uint32_t* palette = get_bit(sprite_flags, 4) == 0 ? obj0_palette : obj1_palette;
+
 			if (sprite_x == 0 || sprite_x >= 168) continue; // sprite is out of screen
-
-			for (int x = 0; x < 8; x++) { // Potentially 8 pixels for witdh to display
+			
+			for (int x = 0; x < 8; x++) { // Potentially 8 pixels for width to display
 				// Check if the pixel are on screen
 				if (x + sprite_x > 8 && x + sprite_x < 168) {
-					uint8 color_index = tile_pixels[sprite[OAM_SPRITE_TILE]][(LY + 16) & 7][x];
-					uint32_t* palette = get_bit(sprite[OAM_SPRITE_FLAGS], 4) == 0 ? obj0_palette : obj1_palette;
+					uint8 px = x_flip == 1 ? 7 - x : x;
+					uint8 px_in_framebuffer = x + sprite_x - 8;
 					
-					if (color_index != 0) { // Since 0 would be transparent 
-						main_screen_framebuffer[LY][x + sprite_x - 8] =  palette[color_index];
+					uint8 py, color_index;
+					if (LCDC_2_value == 0) { // 8x8
+						py = y_flip == 1 ? (7 - (LY - (sprite_y - 16))) : LY - (sprite_y - 16); // since 8 pixels
+						color_index = tile_pixels[sprite_tile_index][py][px];
+					} else {
+						py = y_flip == 1 ? (15 - (LY - (sprite_y - 16))) : LY - (sprite_y - 16); // since 16 pixels
+						color_index = tile_pixels[py < 8 ? (sprite_tile_index & 0xFE) : (sprite_tile_index | 0x01)][py & 7][px];
+					}
+
+					bool bg_color_index_is_0 = main_screen_framebuffer[LY][px_in_framebuffer] == bg_palette[0];
+					if (color_index != 0 && (bg_priority == 0 || bg_color_index_is_0)) { // Since 0 would be transparent 
+						main_screen_framebuffer[LY][px_in_framebuffer] = palette[color_index];
 					}
 				}
 			}
-		} else { // HANDE 8x16, 
-
 		}
-	}
 
+	}
 	if (window_pixel_used) window_line_counter += 1;
 	line_rendered = true;
 }

@@ -44,15 +44,15 @@ int main(int argc, char *argv[])
 	sf::Sprite screen(main_screen_texture);
 	sf::Sprite tiles_sprite(tiles_texture);
 
-	tiles_sprite.setScale(4.f, 4.f);
-	bg_screen.setScale(2.f, 2.f);
-	screen.setScale(4.f, 4.f);
+	tiles_sprite.setScale(SCALE_FACTOR, SCALE_FACTOR);
+	bg_screen.setScale(SCALE_FACTOR/2, SCALE_FACTOR/2);
+	screen.setScale(SCALE_FACTOR, SCALE_FACTOR);
 
 	std::string str = "main";
 	windows.insert({str, &window});
 
 	Emulator emu;
-	emu.init("roms/tetris.gb");
+	emu.init("tests/dmg-acid2.gb");
 
 	//test_all_cpu_blargg(1, windows);
 
