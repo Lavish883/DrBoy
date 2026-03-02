@@ -31,10 +31,10 @@ Cycle-accurate-ish Game Boy (DMG) emulator in C++ with CPU, memory, and PPU subs
 <div style="display:flex; flex-direction:row;justify-content:space-between;flex-wrap:wrap">
     <div>
         Tetris Running <br>
-        <video src="/screenshots/tetris_running.mp4" width="300px" alt="Tetris running">
+        <video src="https://github.com/user-attachments/assets/2f062104-86f8-46ce-9986-abcfba3af93c" width="300px" alt="Tetris running">
     </div>
     <div>
         Dr.Mario Running <br>
-        <video src="/screenshots/drMario_running.mp4" width="300px" alt="Dr.Mario running">
+        <video src="https://github.com/user-attachments/assets/edf8725b-5a27-45c9-a017-0f4375e8e777" width="200px" alt="Dr.Mario running">
     </div>
 </div>
