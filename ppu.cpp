@@ -56,10 +56,13 @@ void PPU::render_scanline() {
 	bit window_tile_map_chosen = LCDC_6_value == 1 ? 1 : 0;
 	
 	bool window_pixel_used = false;
+	
+	uint8_t bg_index_buffer[160];
 	// Renders the background and window
 	for (int x = 0; x < 160; x++) { // 160 pixels per scanline
 		if (LCDC_0_value == 0) {
 			main_screen_framebuffer[LY][x] = dmgPalette[0]; // White if LCDC_0 is 0
+			bg_index_buffer[x] = 0;
 			continue;
 		}
 		bool render_window = LCDC_5_value == 1 && WY_value <= LY &&	x >= WX_value - 7; // means render window pixel
@@ -73,6 +76,7 @@ void PPU::render_scanline() {
 		uint8 color_index = tile_pixels[corrected_tile_index][bg_y & 7][bg_x & 7]; // & 7 is mod 8
 		
 		main_screen_framebuffer[LY][x] = bg_palette[color_index];
+		bg_index_buffer[x] = color_index; // needed for sprite to layer properly
 	}
 
 	//Render the objects/sprites
@@ -97,7 +101,6 @@ void PPU::render_scanline() {
 	bit LCDC_2_value = get_bit(LCDC_value, 2); // obj size
 	
 	if (LCDC_1_value == 1) {
-
 		std::vector<uint8> objs;
 		int obj_count = 0;
 		int obj_height = LCDC_2_value == 0 ? 8 : 16;
@@ -122,7 +125,7 @@ void PPU::render_scanline() {
 			return sprite_a_x < sprite_b_x;
 		});
 
-		// This way because objs go from high_priority to low_priority, and since pixels override each other
+		// This way because objs go from high_priority (index 0) to low_priority, and since pixels override each other
 		for (int sprite_num = objs.size() - 1; sprite_num >= 0; sprite_num--) {
 			auto sprite = oam_map[objs.at(sprite_num)];
 
@@ -153,7 +156,7 @@ void PPU::render_scanline() {
 						color_index = tile_pixels[py < 8 ? (sprite_tile_index & 0xFE) : (sprite_tile_index | 0x01)][py & 7][px];
 					}
 
-					bool bg_color_index_is_0 = main_screen_framebuffer[LY][px_in_framebuffer] == bg_palette[0];
+					bool bg_color_index_is_0 = bg_index_buffer[px_in_framebuffer] == 0;
 					if (color_index != 0 && (bg_priority == 0 || bg_color_index_is_0)) { // Since 0 would be transparent 
 						main_screen_framebuffer[LY][px_in_framebuffer] = palette[color_index];
 					}
@@ -248,7 +251,7 @@ void PPU::update_LY_register() {
 	switch (mode)
 	{
 		case 3: {
-			mem.set_vram_write_access_allowed(false);
+			//mem.set_vram_write_access_allowed(false);
 			if (line_rendered) break;
 			update_tile_pixels();
 			update_tile_maps();
@@ -257,7 +260,7 @@ void PPU::update_LY_register() {
 			break;
 		}
 		default: {
-			mem.set_vram_write_access_allowed(true);
+			//mem.set_vram_write_access_allowed(true);
 			break;
 		}
 	}

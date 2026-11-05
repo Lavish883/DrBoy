@@ -58,6 +58,7 @@ void INSTRUCTIONS::opcode_deconstructor(CPU& cpu, uint8 opcode, std::ostringstre
 	// NEED impleantation
 	case 0x10: { 
 		name << "STOP n8";
+		cpu.tima_cycles_count += 4;
 		return;
 	}
 	case 0x07: {
@@ -91,11 +92,13 @@ void INSTRUCTIONS::opcode_deconstructor(CPU& cpu, uint8 opcode, std::ostringstre
 	case 0x37: {
 		cpu.set_flag('N', 0); cpu.set_flag('H', 0); cpu.set_flag('C', 1);
 		name << "SCF";
+		cpu.t_cycles_count += 4;
 		return;
 	}
 	case 0x3F: {
 		cpu.set_flag('N', 0); cpu.set_flag('H', 0); cpu.set_flag('C', !cpu.get_flag('C'));
 		name << "CCF";
+		cpu.t_cycles_count += 4;
 		return;
 	}
 	case 0x76: {

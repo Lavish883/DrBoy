@@ -6,24 +6,30 @@ void Memory::init() {
 	this->vram.resize(KB_8);
 	this->oam.resize(0xA0); // 160 bytes
 	this->external_ram.resize(KB_8);
-	this->set(0xFF, JOYP_ADDR, false);
+	this->set(0xCF, JOYP_ADDR, false);
+	this->set(0x0, LY_ADDR, false);
+	this->set(0x0, LYC_ADDR, false);
+	this->set(0x85, STAT_ADDR, false);
+	this->set(0x85, IF_ADDR, false);
+	// Set io registers at boot
 }
 
 void Memory::handle_dma_transfer(uint8 value) { // 160 bytes copy
 	dma_requested = true;
 	dma_cycles_left = 640; // initiate the cycle halting for cpu
-	if (value >= 0x00 && value <= 0x7F) { // Copy from rom
-		std::copy(rom_bank.begin(), rom_bank.begin() + 0xA0, oam.begin());
+	
+	uint16 src = value << 8;
+	
+	if (value <= 0x7F) {              // ROM
+        std::copy_n(rom_bank.begin() + (src - 0x0000), 0xA0, oam.begin());
+	} else if (value <= 0x9F) {         // VRAM
+        std::copy_n(vram.begin() + (src - 0x8000), 0xA0, oam.begin());
+	} else if (value <= 0xBF) {         // external RAM
+        std::copy_n(external_ram.begin() + (src - 0xA000), 0xA0, oam.begin());
+	} else if (value <= 0xDF) {         // WRAM
+        std::copy_n(wram.begin() + (src - 0xC000), 0xA0, oam.begin());
 	}
-	if (value >= 0x80 && value <= 0x9F) { // Copy from vram
-		std::copy(vram.begin(), vram.begin() + 0xA0, oam.begin());
-	}
-	if (value >= 0xA0 && value <= 0xBF) { // Copy from external rram
-		std::copy(external_ram.begin(), external_ram.begin() + 0xA0, oam.begin());
-	}
-	if (value >= 0xC0 && value <= 0xDF) { // Copy from wram
-		std::copy(wram.begin(), wram.begin() + 0xA0, oam.begin());
-	}
+
 	for (int i = 0; i < 160; i++) {
 		this->vram_writes.push_back(OAM_START_ADDR + i);
 	}
@@ -53,6 +59,9 @@ uint8 Memory::handle_input_read() const {
 }
 
 uint8 Memory::read(uint16 addr) const {
+	// undocumented flag for the GB
+	if (addr == 0xFF4D) return 0xFF; // https://www.reddit.com/r/EmuDev/comments/ipap0w/blarggs_cpu_tests_and_the_stop_instruction/
+	
 	if (addr >= 0x0 && addr <= 0x7FFF) {
 		return rom_bank.at(addr);
 	}
@@ -71,12 +80,16 @@ uint8 Memory::read(uint16 addr) const {
 	}
 	else if (addr >= 0xFE00 && addr <= 0xFE9F) {
 		return oam.at(addr - 0xFE00);
+	} else if (addr >= 0xE00 && addr <= 0xFDFF){
+		std::cout << "ECHO RAM READ WEIRD, but given read" << std::endl;
+		
+		return wram.at(addr - 0xE000);
 	}
 	else if (addr >= 0xFEA0 && addr <= 0xFEFF) {
 		return 0x0;
 	}
 	//throw std::runtime_error("THIS PART OF MEMORY NOT IMPLEMENTED");
-	std::cout << "THIS PART OF MEMORY NOT IMPLEMENTED" << std::endl;
+	std::cout << "THIS PART OF MEMORY NOT IMPLEMENTED: Mem addr = " << addr << std::endl;
 	return 0x0;
 }
 
@@ -110,6 +123,8 @@ void Memory::set(uint8 value, uint16 addr, bool from_instructions) {
 	else if (addr >= 0xFE00 && addr <= 0xFE9F) {
 		vram_writes.push_back(addr); // IK NOT PART OF VRAM BUT HOW DATA IS UPDATED IN PPU
 		oam.at(addr - 0xFE00) = value;
+	} else if (addr >= 0xE00 && addr <= 0xFDFF){
+		std::cout << "ECHO RAM" << std::endl;
 	}
 	else if (addr >= 0xFEA0 && addr <= 0xFEFF) {
 

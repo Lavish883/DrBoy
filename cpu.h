@@ -39,6 +39,7 @@ class CPU {
 		void handle_clock();
 		void handle_interrupts();
 		void log_to_file();
+		long times_ex = 0;
 
 		std::ofstream log_file;
 		// TO allow instructions to properly do their work
@@ -48,13 +49,13 @@ class CPU {
 		//void set_immediate16_mem(uint16 value);
 
 		uint8 regA = 0x01;
-		uint8 regF = 0xB0;
-		uint8 regB = 0x00;
+		uint8 regF = 0x00;
+		uint8 regB = 0xFF;
 		uint8 regC = 0x13;
 		uint8 regD = 0x00;
-		uint8 regE = 0xD8;
-		uint8 regH = 0x01;
-		uint8 regL = 0x4D;
+		uint8 regE = 0xC1;
+		uint8 regH = 0x84;
+		uint8 regL = 0x03;
 		uint16 regSP = 0xFFFE;
 		uint16 regPC = 0x0100;
 		bool IME = false;

@@ -3,3 +3,8 @@ DrBoy
 *.sav
 *.a
 /roms
+/tests
+compare_files.py
+run_roms.sh
+emu_log.txt
+.vscode

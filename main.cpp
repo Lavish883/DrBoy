@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
 {
 	std::map<std::string, sf::RenderWindow *> windows;
 	sf::RenderWindow window(sf::VideoMode(SCREEN_WIDTH * SCALE_FACTOR, SCREEN_HEIGHT * SCALE_FACTOR), "Game Boy Emulator");
-	sf::RenderWindow tiles_window(sf::VideoMode(ATLAS_WIDTH * SCALE_FACTOR, ATLAS_HEIGHT * SCALE_FACTOR), "Tiles");
+	//sf::RenderWindow tiles_window(sf::VideoMode(ATLAS_WIDTH * SCALE_FACTOR, ATLAS_HEIGHT * SCALE_FACTOR), "Tiles");
 	//sf::RenderWindow background_window(sf::VideoMode(256 * SCALE_FACTOR/2, 256 * SCALE_FACTOR/2), "BG");
 
 
@@ -52,42 +52,60 @@ int main(int argc, char *argv[])
 	windows.insert({str, &window});
 
 	Emulator emu;
-	emu.init("tests/dmg-acid2.gb");
-
+	if (argc >= 2) {
+		emu.init(argv[1]);
+	} else {
+		//emu.init("roms/mts/acceptance/cpu/add_sp_e_timing.gb");
+		emu.init("tests/cpu_instrs.gb");
+	}
+	// PASS
+	// boot_regs-dmgABC.gb
+	// di_timing-GS.gb
+	// ei_sequence.gb
+	// ei_timing.gb
+	// halt_ime0_ei.gb
+	//  halt_ime1_timing.gb
+	// rapid_di_ei.gb
+	// reti_intr_timing.gb
+	//emu.init("roms/drMario.gb");
+	
 	//test_all_cpu_blargg(1, windows);
 
 	uint32_t* tiles_framebuffer = (uint32_t*)malloc(sizeof(uint32_t) * 384 * 64); // 384 tiles each 64 pixels
 	uint32_t* tile_map_9800 = (uint32_t*)malloc(sizeof(uint32_t) * 256 * 256); // 256px by 256 px for tilemap starting at 0x9800
 
 	uint64_t frame_num = 0;
-	while (window.isOpen() || tiles_window.isOpen()) //  || background_window.isOpen()
+	while (window.isOpen()) //|| tiles_window.isOpen()) //  || background_window.isOpen()
 	{
 		sf::Event event;
-		sf::Event event2;
+		//sf::Event event2;
 		while (window.isOpen() && window.pollEvent(event))
 		{
 			if (event.type == sf::Event::Closed)
 			{
 				window.close();
-				tiles_window.close();
+				//tiles_window.close();
 				//background_window.close();
 				break;
 			}
 		}
 
-		while (tiles_window.isOpen() && tiles_window.pollEvent(event2))
-		{
-			if (event2.type == sf::Event::Closed)
-			{
-				tiles_window.close();
-			}
-		}
+		//while (tiles_window.isOpen() && tiles_window.pollEvent(event2))
+		//{
+		//	if (event2.type == sf::Event::Closed)
+		//	{
+		//		tiles_window.close();
+		//	}
+		//}
 
 		handle_input(emu, event);
 		
 		int cycles_this_frame = 0;
 		while (cycles_this_frame < CYCLES_PER_FRAME)
 		{
+			if (cycles_this_frame == 57712 && frame_num == 192) {
+					std::cout << "pause";
+			}
 			unsigned int cycles_took = emu.run(windows);
 			if (cycles_took == 0) {
 				throw std::runtime_error("Fuk");
@@ -105,13 +123,13 @@ int main(int argc, char *argv[])
 		bg_screen_texture.update((uint8_t *)tile_map_9800);
 
 		window.clear();
-		tiles_window.clear();
+		//tiles_window.clear();
 		//background_window.clear();
-		tiles_window.draw(tiles_sprite);
+		//tiles_window.draw(tiles_sprite);
 		//background_window.draw(bg_screen);
 		window.draw(screen);
 		window.display();
-		tiles_window.display();
+		//tiles_window.display();
 		//background_window.display();
 		frame_num++;
 	}
